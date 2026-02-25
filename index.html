@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SL Club Screen</title>
+  <style>
+    * { 
+      margin: 0; 
+      padding: 0; 
+      box-sizing: border-box; 
+    }
+    body { 
+      background: #000; 
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+    }
+    #player {
+      width: 100vw;
+      height: 100vh;
+    }
+
+    /* Track info bar - shows briefly when track changes */
+    #infoBar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: rgba(0, 0, 0, 0.75);
+      color: #ffffff;
+      font-family: Arial, sans-serif;
+      font-size: 16px;
+      padding: 10px 16px;
+      display: none;
+      z-index: 999;
+    }
+    #infoBar .trackNum {
+      color: #aaaaaa;
+      margin-right: 8px;
+    }
+    #infoBar .trackName {
+      color: #ffffff;
+      font-weight: bold;
+    }
+
+    /* Loading spinner shown before player ready */
+    #loading {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #ffffff;
+      font-family: Arial, sans-serif;
+      font-size: 18px;
+    }
+
+    /* Error message */
+    #errorMsg {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #ff4444;
+      font-family: Arial, sans-serif;
+      font-size: 16px;
+      text-align: center;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="loading">Loading player...</div>
+  <div id="errorMsg"></div>
+  <div id="player"></div>
+
+  <div id="infoBar">
+    <span class="trackNum" id="trackNum"></span>
+    <span class="trackName" id="trackName"></span>
+  </div>
+
+  <!-- YouTube IFrame API -->
+  <script src="https://www.youtube.com/iframe_api"></script>
+
+  <script>
+
+    // =============================================
+    //  PLAYLIST
+    //  Add your YouTube video IDs and names here
+    //  Get video ID from URL: youtube.com/watch?v=XXXXX
+    //                                              ^^^^^
+    // =============================================
+    var playlist = [
+      { id: "I3MehWjLBz8", name: "Song One"   },
+      { id: "dQw4w9WgXcQ", name: "Song Two"   },
+      { id: "jNQXAC9IVRw", name: "Song Three" },
+      { id: "9bZkp7q19f0", name: "Song Four"  },
+      { id: "kJQP7kiw5Fk", name: "Song Five"  }
+    ];
+    // =============================================
+
+    var currentIndex  = 0;
+    var player        = null;
+    var infoTimer     = null;
+    var isReady       = false;
+    var shuffleMode   = false;
+    var shuffledOrder = [];
+
+    // ── YouTube API Ready ──
+    function onYouTubeIframeAPIReady() {
+      document.getElementById('loading').style.display = 'block';
+
+      player = new YT.Player('player', {
+        width:   '100%',
+        height:  '100%',
+        videoId: playlist[currentIndex].id,
+        playerVars: {
+          autoplay:       1,
+          rel:            0,
+          modestbranding: 1,
+          iv_load_policy: 3,
+          fs:             1,
+          playsinline:    1,
+          controls:       1
+        },
+        events: {
+          onReady:       onPlayerReady,
+          onStateChange: onPlayerStateChange,
+          onError:       onPlayerError
+        }
+      });
+    }
+
+    // ── Player Ready ──
+    function onPlayerReady(event) {
+      document.getElementById('loading').style.display = 'none';
+      isReady = true;
+      event.target.playVideo();
+      showInfo();
+    }
+
+    // ── State Change — detect when video ends ──
+    function onPlayerStateChange(event) {
+      // YT.PlayerState.ENDED = 0
+      if (event.data === YT.PlayerState.ENDED) {
+        nextTrack();
+      }
+    }
+
+    // ── Error Handler ──
+    function onPlayerError(event) {
+      var errors = {
+        2:   "Invalid video ID",
+        5:   "HTML5 player error",
+        100: "Video not found or private",
+        101: "Video owner does not allow embedding",
+        150: "Video owner does not allow embedding"
+      };
+      var msg = errors[event.data] || "Unknown error (" + event.data + ")";
+      showError(msg + " — skipping to next track");
+      
+      // Auto skip to next track on error
+      setTimeout(function() {
+        nextTrack();
+      }, 2000);
+    }
+
+    // ── Play Specific Track ──
+    function playTrack(index) {
+      if (playlist.length === 0) return;
+
+      if (index < 0)                  index = playlist.length - 1;
+      if (index >= playlist.length)   index = 0;
+      currentIndex = index;
+
+      hideError();
+
+      if (isReady) {
+        player.loadVideoById(playlist[currentIndex].id);
+        showInfo();
+      }
+    }
+
+    // ── Next Track ──
+    function nextTrack() {
+      if (shuffleMode) {
+        playTrack(getNextShuffle());
+      } else {
+        playTrack(currentIndex + 1);
+      }
+    }
+
+    // ── Previous Track ──
+    function prevTrack() {
+      playTrack(currentIndex - 1);
+    }
+
+    // ── Shuffle ──
+    function buildShuffleOrder() {
+      shuffledOrder = [];
+      for (var i = 0; i < playlist.length; i++) shuffledOrder.push(i);
+      // Fisher-Yates shuffle
+      for (var i = shuffledOrder.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var temp = shuffledOrder[i];
+        shuffledOrder[i] = shuffledOrder[j];
+        shuffledOrder[j] = temp;
+      }
+    }
+
+    function getNextShuffle() {
+      var pos = shuffledOrder.indexOf(currentIndex);
+      if (pos === -1 || pos >= shuffledOrder.length - 1) {
+        buildShuffleOrder();
+        return shuffledOrder[0];
+      }
+      return shuffledOrder[pos + 1];
+    }
+
+    function toggleShuffle() {
+      shuffleMode = !shuffleMode;
+      if (shuffleMode) buildShuffleOrder();
+      showTempMessage(shuffleMode ? "🔀 Shuffle ON" : "➡ Shuffle OFF");
+    }
+
+    // ── Show track info bar ──
+    function showInfo() {
+      var bar  = document.getElementById('infoBar');
+      var num  = document.getElementById('trackNum');
+      var name = document.getElementById('trackName');
+
+      num.innerText  = (currentIndex + 1) + "/" + playlist.length;
+      name.innerText = playlist[currentIndex].name;
+
+      bar.style.display = 'block';
+
+      // Clear existing timer
+      if (infoTimer) clearTimeout(infoTimer);
+
+      // Hide after 5 seconds
+      infoTimer = setTimeout(function() {
+        bar.style.display = 'none';
+      }, 5000);
+    }
+
+    // ── Show temporary message ──
+    function showTempMessage(msg) {
+      var bar  = document.getElementById('infoBar');
+      var num  = document.getElementById('trackNum');
+      var name = document.getElementById('trackName');
+      num.innerText  = '';
+      name.innerText = msg;
+      bar.style.display = 'block';
+      if (infoTimer) clearTimeout(infoTimer);
+      infoTimer = setTimeout(function() {
+        bar.style.display = 'none';
+      }, 3000);
+    }
+
+    // ── Show error ──
+    function showError(msg) {
+      var err = document.getElementById('errorMsg');
+      err.innerText      = "⚠ " + msg;
+      err.style.display  = 'block';
+    }
+    function hideError() {
+      document.getElementById('errorMsg').style.display = 'none';
+    }
+
+    // =============================================
+    //  COMMAND SYSTEM
+    //  LSL sends commands by changing the URL hash
+    //  e.g.  yourpage.html#next
+    //        yourpage.html#prev
+    //        yourpage.html#play=3
+    //        yourpage.html#shuffle
+    //        yourpage.html#stop
+    //        yourpage.html#pause
+    // =============================================
+    window.addEventListener('hashchange', function() {
+      var cmd = window.location.hash.replace('#', '').toLowerCase().trim();
+      if (!cmd) return;
+
+      if      (cmd === 'next')              nextTrack();
+      else if (cmd === 'prev')              prevTrack();
+      else if (cmd === 'stop')              player.stopVideo();
+      else if (cmd === 'pause')             player.pauseVideo();
+      else if (cmd === 'play')              player.playVideo();
+      else if (cmd === 'shuffle')           toggleShuffle();
+      else if (cmd.indexOf('play=') === 0) {
+        var num = parseInt(cmd.replace('play=', '')) - 1;
+        playTrack(num);
+      }
+
+      // Clear hash after handling so same command can fire again
+      setTimeout(function() {
+        history.replaceState(null, null, window.location.pathname);
+      }, 500);
+    });
+
+  </script>
+
+</body>
+</html>
