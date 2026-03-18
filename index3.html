@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; }
+    #player { width: 100vw; height: 100vh; }
+    #infoBar {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: rgba(0,0,0,0.8);
+      color: #fff;
+      font-family: Arial, sans-serif;
+      font-size: 16px;
+      padding: 10px 16px;
+      display: none;
+      z-index: 999;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="player"></div>
+  <div id="infoBar"></div>
+
+  <script src="https://www.youtube.com/iframe_api"></script>
+  <script>
+
+    // =============================================
+    //  EDIT ONLY THIS SECTION
+    //  Add or remove songs here anytime
+    //  Then commit to GitHub and reload in SL
+    // =============================================
+    var playlist = [
+{ id: "fk4BbF7B29w", name : "ABBA-Dancing Queen" },
+{ id: "fk4BbF7B29w", name : "AJR-Bang!" },
+{ id: "fk4BbF7B29w", name : "Aerosmith-" },
+{ id: "fk4BbF7B29w", name : "Adele-Hello" },
+{ id: "fk4BbF7B29w", name : "Adele-Hello" },
+{ id: "fk4BbF7B29w", name : "Adele-Hello" },
+{ id: "fk4BbF7B29w", name : "Adele-Hello" },
+{ id: "fk4BbF7B29w", name : "Adele-Hello" }
+];
+    // =============================================
+
+    var currentIndex = 0;
+    var player       = null;
+    var isReady      = false;
+    var infoTimer    = null;
+
+    function onYouTubeIframeAPIReady() {
+      player = new YT.Player('player', {
+        width:   '100%',
+        height:  '100%',
+        videoId: playlist[0].id,
+        playerVars: {
+          autoplay:       1,
+          rel:            0,
+          modestbranding: 1,
+          iv_load_policy: 3,
+          controls:       1,
+          cc_load_policy: 1,    // ← force CC on always
+          cc_lang_pref:   "en", // ← caption language
+          hl:             "en"  // ← player language
+        },
+        events: {
+          onReady:       onPlayerReady,
+          onStateChange: onPlayerStateChange,
+          onError:       onPlayerError
+        }
+      });
+    }
+
+    function onPlayerReady(event) {
+      isReady = true;
+      event.target.playVideo();
+      showInfo();
+    }
+
+    // ── Auto advance when song ends ──
+    function onPlayerStateChange(event) {
+      if (event.data === YT.PlayerState.ENDED) {
+        nextTrack();
+      }
+    }
+
+    // ── Skip blocked videos automatically ──
+    function onPlayerError(event) {
+      showInfo("⚠ Skipping blocked video...");
+      setTimeout(nextTrack, 2000);
+    }
+
+    function playTrack(index) {
+      if (index < 0)                  index = playlist.length - 1;
+      if (index >= playlist.length)   index = 0;
+      currentIndex = index;
+      if (isReady) {
+        player.loadVideoById(playlist[currentIndex].id);
+        showInfo();
+      }
+    }
+
+    function nextTrack() { playTrack(currentIndex + 1); }
+    function prevTrack() { playTrack(currentIndex - 1); }
+
+    function showInfo() {
+      var bar = document.getElementById('infoBar');
+      bar.innerText = "▶  "
+        + (currentIndex + 1) + "/" + playlist.length
+        + "   " + playlist[currentIndex].name;
+      bar.style.display = 'block';
+      if (infoTimer) clearTimeout(infoTimer);
+      infoTimer = setTimeout(function() {
+        bar.style.display = 'none';
+      }, 5000);
+    }
+
+    // ── Commands from LSL via URL hash ──
+    function handleHash(hash) {
+      var cmd = hash.replace('#', '').trim();
+      if (!cmd || !isReady) return;
+
+      if      (cmd === 'next')             nextTrack();
+      else if (cmd === 'prev')             prevTrack();
+      else if (cmd === 'stop')             player.stopVideo();
+      else if (cmd === 'pause')            player.pauseVideo();
+      else if (cmd === 'play')             player.playVideo();
+      else if (cmd.indexOf('play=') === 0) {
+        playTrack(parseInt(cmd.replace('play=', '')) - 1);
+      }
+
+      // Clear hash after command
+      setTimeout(function() {
+        history.replaceState(null, null, window.location.pathname);
+      }, 300);
+    }
+
+    window.addEventListener('hashchange', function() {
+      handleHash(window.location.hash);
+    });
+
+  </script>
+</body>
+</html>
